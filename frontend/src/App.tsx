@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { Planet, SimulationState, SimulationSummary, StarSystem, SurfaceCell } from './types';
+import { Alert, Planet, SimulationState, SimulationSummary, Species, StarSystem, SurfaceCell } from './types';
 
 type ViewMode = 'galaxy' | 'system' | 'planet';
 
@@ -8,9 +8,8 @@ type PlanetDelta = {
   habitability: number;
   temperature: number;
   moisture: number;
-  water: number;
   population: number;
-  speciesCount: number;
+  settlementCount: number;
 };
 
 type StepReport = {
@@ -18,9 +17,15 @@ type StepReport = {
   beforeStep: number;
   afterStep: number;
   changedWorlds: number;
-  selectedPlanetId: string | null;
   selectedPlanetDelta: PlanetDelta | null;
-  eventLabel: string;
+  headline: string;
+};
+
+type InfluenceAction = {
+  id: string;
+  label: string;
+  effect: string;
+  mode: 'subtle' | 'direct';
 };
 
 const BIOME_COLORS: Record<string, string> = {
@@ -37,6 +42,34 @@ const BIOME_COLORS: Record<string, string> = {
   volcanic: '#b44d34',
 };
 
+const WORLD_ACTIONS: InfluenceAction[] = [
+  { id: 'warm_atmosphere', label: 'Warm Atmosphere', effect: 'Raise long-term heat drift.', mode: 'subtle' },
+  { id: 'cool_atmosphere', label: 'Cool Atmosphere', effect: 'Lower long-term heat drift.', mode: 'subtle' },
+  { id: 'enrich_rains', label: 'Enrich Rains', effect: 'Increase moisture drift and fertility.', mode: 'subtle' },
+  { id: 'fertility_blessing', label: 'Fertility Blessing', effect: 'Strengthen biosphere growth.', mode: 'subtle' },
+  { id: 'stir_mutation', label: 'Stir Mutation', effect: 'Push adaptation and change.', mode: 'subtle' },
+  { id: 'stabilize_world', label: 'Stabilize World', effect: 'Reduce collapse and climate shocks.', mode: 'subtle' },
+  { id: 'enrich_resources', label: 'Enrich Resources', effect: 'Boost long-run material potential.', mode: 'subtle' },
+  { id: 'protect_biosphere', label: 'Protect Biosphere', effect: 'Shield life and settlements.', mode: 'direct' },
+  { id: 'biosphere_seeding', label: 'Biosphere Seeding', effect: 'Directly encourage life where viable.', mode: 'direct' },
+  { id: 'raise_disasters', label: 'Raise Disasters', effect: 'Increase hazard and collapse risk.', mode: 'direct' },
+  { id: 'cataclysm', label: 'Cataclysm', effect: 'Severely disrupt the world.', mode: 'direct' },
+];
+
+const CULTURE_ACTIONS: InfluenceAction[] = [
+  { id: 'encourage_cooperation', label: 'Encourage Cooperation', effect: 'Improve coordination and resilience.', mode: 'subtle' },
+  { id: 'encourage_conflict', label: 'Encourage Conflict', effect: 'Raise pressure and volatility.', mode: 'direct' },
+  { id: 'encourage_curiosity', label: 'Encourage Curiosity', effect: 'Bias discovery and experimentation.', mode: 'subtle' },
+  { id: 'encourage_caution', label: 'Encourage Caution', effect: 'Increase survival discipline.', mode: 'subtle' },
+  { id: 'encourage_invention', label: 'Encourage Invention', effect: 'Bias technological development.', mode: 'subtle' },
+  { id: 'encourage_agriculture', label: 'Encourage Agriculture', effect: 'Bias food and settlement capacity.', mode: 'subtle' },
+  { id: 'encourage_navigation', label: 'Encourage Navigation', effect: 'Bias travel and local reach.', mode: 'subtle' },
+  { id: 'encourage_astronomy', label: 'Encourage Astronomy', effect: 'Bias orbital awareness and science.', mode: 'subtle' },
+  { id: 'encourage_spirituality', label: 'Encourage Spirituality', effect: 'Shape meaning-making and myth.', mode: 'subtle' },
+  { id: 'suppress_collapse', label: 'Suppress Collapse', effect: 'Push against breakdown pressure.', mode: 'direct' },
+  { id: 'increase_expansion_drive', label: 'Increase Expansion Drive', effect: 'Bias off-world ambition.', mode: 'direct' },
+];
+
 function metricPercent(value: number | undefined): string {
   return `${Math.round((value ?? 0) * 100)}%`;
 }
@@ -51,14 +84,16 @@ function formatSignedNumber(value: number): string {
 }
 
 function populationOf(planet: Planet): number {
-  return planet.species.reduce((sum, species) => sum + species.population, 0);
+  const biosphere = planet.species.reduce((sum, species) => sum + species.population, 0);
+  const settlement = planet.settlement?.population ?? 0;
+  return biosphere + settlement;
 }
 
 function eraName(step: number): string {
   if (step < 5) return 'Genesis Drift';
   if (step < 15) return 'World Bloom';
   if (step < 30) return 'Awakening Age';
-  return 'Stellar Chronicle';
+  return 'Overseer Epoch';
 }
 
 function seasonName(phase: number): string {
@@ -81,25 +116,21 @@ function climateLabel(planet: Planet): string {
 }
 
 function lifeStageSummary(planet: Planet): { label: string; tone: 'sterile' | 'primitive' | 'developing' | 'civilized' } {
-  if (!planet.life.present) {
-    return { label: 'Sterile world', tone: 'sterile' };
-  }
-  if (planet.life.civilization) {
-    return { label: 'Civilization-bearing world', tone: 'civilized' };
-  }
-  if (planet.species.some((species) => species.stage === 'toolmakers')) {
-    return { label: 'Developing biosphere', tone: 'developing' };
-  }
+  if (planet.settlement) return { label: `${planet.settlement.kind} world`, tone: 'civilized' };
+  if (!planet.life.present) return { label: 'Sterile world', tone: 'sterile' };
+  if (planet.life.civilization?.orbital_presence) return { label: 'Orbital civilization', tone: 'civilized' };
+  if (planet.life.civilization) return { label: 'Planetary civilization', tone: 'civilized' };
+  if (planet.species.some((species) => species.stage === 'toolmakers')) return { label: 'Developing cultures', tone: 'developing' };
   return { label: 'Primitive biosphere', tone: 'primitive' };
 }
 
 function hotspotCells(planet: Planet): SurfaceCell[] {
-  if (!planet.life.present) return [];
+  if (!planet.life.present && !planet.settlement) return [];
   return planet.surface
     .flat()
-    .filter((cell) => !cell.has_water && cell.habitability > 0.55)
+    .filter((cell) => !cell.has_water && cell.habitability > 0.52)
     .sort((left, right) => right.habitability - left.habitability)
-    .slice(0, Math.min(4, planet.life.species_count + 1));
+    .slice(0, Math.min(5, planet.life.species_count + (planet.settlement ? 2 : 1)));
 }
 
 function findPlanet(state: SimulationState | null, planetId: string | null): Planet | null {
@@ -111,7 +142,14 @@ function findPlanet(state: SimulationState | null, planetId: string | null): Pla
   return null;
 }
 
-function buildStepReport(before: SimulationState, after: SimulationState, selectedPlanetId: string | null, steps: number): StepReport {
+function dominantSpecies(planet: Planet): Species | null {
+  return planet.species.reduce<Species | null>((best, species) => {
+    if (!best || species.population > best.population) return species;
+    return best;
+  }, null);
+}
+
+function buildStepReport(before: SimulationState, after: SimulationState, selectedPlanetId: string | null): StepReport {
   let changedWorlds = 0;
   for (const system of after.systems) {
     for (const planet of system.planets) {
@@ -119,7 +157,8 @@ function buildStepReport(before: SimulationState, after: SimulationState, select
       if (!previous) continue;
       if (
         previous.metrics.habitability !== planet.metrics.habitability ||
-        previous.life.species_count !== planet.life.species_count ||
+        previous.life.development_index !== planet.life.development_index ||
+        previous.settlement?.population !== planet.settlement?.population ||
         populationOf(previous) !== populationOf(planet)
       ) {
         changedWorlds += 1;
@@ -129,34 +168,24 @@ function buildStepReport(before: SimulationState, after: SimulationState, select
 
   const selectedBefore = findPlanet(before, selectedPlanetId);
   const selectedAfter = findPlanet(after, selectedPlanetId);
-  let selectedPlanetDelta: PlanetDelta | null = null;
+  const delta = selectedBefore && selectedAfter
+    ? {
+        habitability: Number((selectedAfter.metrics.habitability - selectedBefore.metrics.habitability).toFixed(3)),
+        temperature: Number((selectedAfter.metrics.avg_temperature - selectedBefore.metrics.avg_temperature).toFixed(3)),
+        moisture: Number((selectedAfter.metrics.avg_moisture - selectedBefore.metrics.avg_moisture).toFixed(3)),
+        population: populationOf(selectedAfter) - populationOf(selectedBefore),
+        settlementCount: (selectedAfter.settlement ? 1 : 0) - (selectedBefore.settlement ? 1 : 0),
+      }
+    : null;
 
-  if (selectedBefore && selectedAfter) {
-    selectedPlanetDelta = {
-      habitability: Number((selectedAfter.metrics.habitability - selectedBefore.metrics.habitability).toFixed(3)),
-      temperature: Number((selectedAfter.metrics.avg_temperature - selectedBefore.metrics.avg_temperature).toFixed(3)),
-      moisture: Number((selectedAfter.metrics.avg_moisture - selectedBefore.metrics.avg_moisture).toFixed(3)),
-      water: Number((selectedAfter.metrics.water_ratio - selectedBefore.metrics.water_ratio).toFixed(3)),
-      population: populationOf(selectedAfter) - populationOf(selectedBefore),
-      speciesCount: selectedAfter.life.species_count - selectedBefore.life.species_count,
-    };
-  }
-
-  const eventLabel =
-    after.metrics.species_count > before.metrics.species_count
-      ? 'New life signatures intensified across the simulation.'
-      : after.metrics.habitable_worlds > before.metrics.habitable_worlds
-        ? 'Climate fronts improved habitability on additional worlds.'
-        : 'Seasonal drift reshaped the known worlds.';
-
+  const latestAlert = after.alerts[after.alerts.length - 1];
   return {
-    steps,
+    steps: after.current_step - before.current_step,
     beforeStep: before.current_step,
     afterStep: after.current_step,
     changedWorlds,
-    selectedPlanetId,
-    selectedPlanetDelta,
-    eventLabel,
+    selectedPlanetDelta: delta,
+    headline: latestAlert?.title ?? 'Simulation advanced.',
   };
 }
 
@@ -178,30 +207,27 @@ function PlanetGlobe({ planet, hoveredCell }: { planet: Planet; hoveredCell: Sur
             <circle cx="120" cy="120" r="90" />
           </clipPath>
           <radialGradient id={`shade-${planet.id}`} cx="35%" cy="30%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.4)" />
-            <stop offset="65%" stopColor="rgba(255,255,255,0.03)" />
-            <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
+            <stop offset="0%" stopColor="rgba(255,255,255,0.42)" />
+            <stop offset="65%" stopColor="rgba(255,255,255,0.04)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0.48)" />
           </radialGradient>
         </defs>
         <circle cx="120" cy="120" r="98" fill="rgba(94, 140, 255, 0.12)" stroke={atmosphereColor} strokeWidth="3" />
         <g clipPath={`url(#clip-${planet.id})`}>
           <rect x="0" y="0" width="240" height="240" fill="#09121f" />
-          {planet.surface.flat().map((cell) => {
-            const isHotspot = hotspots.some((item) => item.x === cell.x && item.y === cell.y);
-            return (
-              <rect
-                key={`${planet.id}-${cell.x}-${cell.y}`}
-                x={24 + cell.x * 8}
-                y={48 + cell.y * 12}
-                width="8"
-                height="12"
-                fill={BIOME_COLORS[cell.biome] ?? '#666'}
-                opacity={0.62 + cell.habitability * 0.45}
-                stroke={cell.has_water ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.18)'}
-                strokeWidth="0.7"
-              />
-            );
-          })}
+          {planet.surface.flat().map((cell) => (
+            <rect
+              key={`${planet.id}-${cell.x}-${cell.y}`}
+              x={24 + cell.x * 8}
+              y={48 + cell.y * 12}
+              width="8"
+              height="12"
+              fill={BIOME_COLORS[cell.biome] ?? '#666'}
+              opacity={0.62 + cell.habitability * 0.45}
+              stroke={cell.has_water ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.18)'}
+              strokeWidth="0.7"
+            />
+          ))}
           {hotspots.map((cell) => (
             <circle
               key={`${planet.id}-hotspot-${cell.x}-${cell.y}`}
@@ -213,6 +239,7 @@ function PlanetGlobe({ planet, hoveredCell }: { planet: Planet; hoveredCell: Sur
               strokeWidth="1"
             />
           ))}
+          {planet.settlement && <circle cx="120" cy="120" r="82" fill="none" stroke="rgba(255, 212, 127, 0.72)" strokeWidth="2.5" strokeDasharray="5 4" />}
           {hoveredCell && (
             <rect
               x={24 + hoveredCell.x * 8}
@@ -229,7 +256,7 @@ function PlanetGlobe({ planet, hoveredCell }: { planet: Planet; hoveredCell: Sur
       </svg>
       <div className="planet-globe-caption">
         <div>
-          <p className="eyebrow">Planet feel</p>
+          <p className="eyebrow">World state</p>
           <strong>{stage.label}</strong>
         </div>
         <span>{climateLabel(planet)}</span>
@@ -240,7 +267,6 @@ function PlanetGlobe({ planet, hoveredCell }: { planet: Planet; hoveredCell: Sur
 
 function SurfaceMap({ planet, onHover, hoveredCell }: { planet: Planet; onHover: (cell: SurfaceCell | null) => void; hoveredCell: SurfaceCell | null }) {
   const hotspots = hotspotCells(planet);
-
   return (
     <div className="surface-wrap">
       <div className="surface-map" role="img" aria-label={`Surface map of ${planet.name}`}>
@@ -254,7 +280,6 @@ function SurfaceMap({ planet, onHover, hoveredCell }: { planet: Planet; onHover:
               style={{
                 background: BIOME_COLORS[cell.biome] ?? '#888',
                 opacity: 0.65 + cell.habitability * 0.45,
-                boxShadow: cell.has_water ? 'inset 0 0 0 1px rgba(255,255,255,0.08)' : 'inset 0 0 0 1px rgba(0,0,0,0.15)',
               }}
               onMouseEnter={() => onHover(cell)}
               onFocus={() => onHover(cell)}
@@ -291,6 +316,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [hoverCell, setHoverCell] = useState<SurfaceCell | null>(null);
   const [stepReport, setStepReport] = useState<StepReport | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<Alert | null>(null);
 
   const refreshList = async () => {
     const items = await api.listSimulations();
@@ -311,7 +337,8 @@ function App() {
     return selectedSystem.planets.find((item) => item.id === selectedPlanetId) ?? selectedSystem.planets[0] ?? null;
   }, [selectedSystem, selectedPlanetId]);
 
-  const selectedPlanetStage = selectedPlanet ? lifeStageSummary(selectedPlanet) : null;
+  const stage = selectedPlanet ? lifeStageSummary(selectedPlanet) : null;
+  const primarySpecies = selectedPlanet ? dominantSpecies(selectedPlanet) : null;
 
   useEffect(() => {
     if (simulation?.systems[0] && !selectedSystemId) {
@@ -325,17 +352,22 @@ function App() {
     }
   }, [selectedSystem, selectedPlanetId]);
 
+  const hydrateSelection = (state: SimulationState) => {
+    setSelectedSystemId(state.systems[0]?.id ?? null);
+    setSelectedPlanetId(state.systems[0]?.planets[0]?.id ?? null);
+    setViewMode('galaxy');
+    setHoverCell(null);
+  };
+
   const loadSimulation = async (id: string) => {
     setLoading(true);
     setError(null);
     try {
       const state = await api.loadSimulation(id);
       setSimulation(state);
-      setSelectedSystemId(state.systems[0]?.id ?? null);
-      setSelectedPlanetId(state.systems[0]?.planets[0]?.id ?? null);
-      setViewMode('galaxy');
+      hydrateSelection(state);
       setStepReport(null);
-      setHoverCell(null);
+      setActionFeedback(null);
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -349,11 +381,9 @@ function App() {
     try {
       const state = await api.createSimulation(seed, name || undefined);
       setSimulation(state);
-      setSelectedSystemId(state.systems[0]?.id ?? null);
-      setSelectedPlanetId(state.systems[0]?.planets[0]?.id ?? null);
-      setViewMode('galaxy');
+      hydrateSelection(state);
       setStepReport(null);
-      setHoverCell(null);
+      setActionFeedback(null);
       await refreshList();
     } catch (reason) {
       setError((reason as Error).message);
@@ -367,9 +397,11 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      const before = simulation;
       const state = await api.stepSimulation(simulation.id, steps);
       setSimulation(state);
-      setStepReport(buildStepReport(simulation, state, selectedPlanetId, steps));
+      setStepReport(buildStepReport(before, state, selectedPlanetId));
+      setActionFeedback(state.alerts[state.alerts.length - 1] ?? null);
       await refreshList();
     } catch (reason) {
       setError((reason as Error).message);
@@ -378,13 +410,42 @@ function App() {
     }
   };
 
+  const applyInfluence = async (action: InfluenceAction) => {
+    if (!simulation || !selectedPlanet) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const state = await api.influencePlanet(simulation.id, selectedPlanet.id, action.id);
+      setSimulation(state);
+      setActionFeedback(state.alerts[state.alerts.length - 1] ?? null);
+      await refreshList();
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectWatchWorld = (planetId: string) => {
+    if (!simulation) return;
+    for (const system of simulation.systems) {
+      const planet = system.planets.find((item) => item.id === planetId);
+      if (planet) {
+        setSelectedSystemId(system.id);
+        setSelectedPlanetId(planet.id);
+        setViewMode('planet');
+        return;
+      }
+    }
+  };
+
   return (
-    <div className="app-shell">
+    <div className="app-shell overseer-shell">
       <aside className="sidebar">
         <div>
           <p className="eyebrow">Grand Simulations</p>
-          <h1>Cosmic Sandbox</h1>
-          <p className="muted">Chart seeded universes, descend into living worlds, and feel each epoch reshape the cosmos.</p>
+          <h1>Cosmic Overseer</h1>
+          <p className="muted">Observe, influence, and test whether worlds can rise from biosphere to off-world presence.</p>
         </div>
 
         <section className="panel stack-gap">
@@ -413,49 +474,52 @@ function App() {
                 <strong>{item.name}</strong>
                 <span>Seed {item.seed}</span>
                 <span>{item.metrics.system_count} systems · {item.metrics.planet_count} worlds</span>
-                <span>Epoch {item.current_step}</span>
+                <span>{item.metrics.civilization_worlds ?? 0} civilized · epoch {item.current_step}</span>
               </button>
             ))}
-            {simulations.length === 0 && <p className="muted">No simulations stored yet.</p>}
           </div>
         </section>
+
+        {simulation && (
+          <section className="panel stack-gap">
+            <div className="section-header compact-header">
+              <div>
+                <p className="eyebrow">Overseer watchlist</p>
+                <h2>High-interest worlds</h2>
+              </div>
+              <span>{simulation.metrics.watch_worlds} watched</span>
+            </div>
+            <div className="watch-list">
+              {simulation.overseer.watch_worlds.map((watch) => (
+                <button key={watch.planet_id} className="watch-card" onClick={() => selectWatchWorld(watch.planet_id)}>
+                  <strong>{watch.planet_name}</strong>
+                  <span>{watch.system_name}</span>
+                  <span>Interest {metricPercent(watch.interest)} · {watch.alert_level}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
       </aside>
 
       <main className="main-panel">
         <header className="topbar panel topbar-grid">
           <div>
-            <p className="eyebrow">Explorer Path</p>
+            <p className="eyebrow">Observer Path</p>
             <div className="breadcrumb-row">
-              <button className={`breadcrumb ${viewMode === 'galaxy' ? 'active' : ''}`} onClick={() => setViewMode('galaxy')} disabled={!simulation}>
-                Universe
-              </button>
+              <button className={`breadcrumb ${viewMode === 'galaxy' ? 'active' : ''}`} onClick={() => setViewMode('galaxy')} disabled={!simulation}>Universe</button>
               <span>›</span>
-              <button
-                className={`breadcrumb ${viewMode === 'system' ? 'active' : ''}`}
-                onClick={() => setViewMode('system')}
-                disabled={!selectedSystem}
-              >
-                {selectedSystem?.name ?? 'System'}
-              </button>
+              <button className={`breadcrumb ${viewMode === 'system' ? 'active' : ''}`} onClick={() => setViewMode('system')} disabled={!selectedSystem}>{selectedSystem?.name ?? 'System'}</button>
               <span>›</span>
-              <button
-                className={`breadcrumb ${viewMode === 'planet' ? 'active' : ''}`}
-                onClick={() => setViewMode('planet')}
-                disabled={!selectedPlanet}
-              >
-                {selectedPlanet?.name ?? 'Planet'}
-              </button>
+              <button className={`breadcrumb ${viewMode === 'planet' ? 'active' : ''}`} onClick={() => setViewMode('planet')} disabled={!selectedPlanet}>{selectedPlanet?.name ?? 'Planet'}</button>
             </div>
             <h2>{simulation?.name ?? 'No active universe'}</h2>
           </div>
-
           <section className="epoch-engine">
             <div>
               <p className="eyebrow">Epoch Engine</p>
               <strong>Epoch {simulation?.current_step ?? 0} · {eraName(simulation?.current_step ?? 0)}</strong>
-              <p className="muted">
-                {selectedPlanet ? `${selectedPlanet.name}: ${seasonName(selectedPlanet.season_phase)} · ${climateLabel(selectedPlanet)}` : 'Create or load a simulation to begin.'}
-              </p>
+              <p className="muted">{selectedPlanet ? `${selectedPlanet.name}: ${seasonName(selectedPlanet.season_phase)} · ${climateLabel(selectedPlanet)}` : 'Create or load a simulation to begin.'}</p>
             </div>
             <div className="time-controls pulse-controls">
               <button onClick={() => stepTime(1)} disabled={!simulation || loading}>Pulse +1</button>
@@ -464,9 +528,9 @@ function App() {
             </div>
             {stepReport && (
               <div className="step-report">
-                <strong>Last shift: {stepReport.eventLabel}</strong>
+                <strong>{stepReport.headline}</strong>
                 <span>{stepReport.changedWorlds} worlds changed from epoch {stepReport.beforeStep} to {stepReport.afterStep}.</span>
-                {stepReport.selectedPlanetDelta && selectedPlanet && (
+                {stepReport.selectedPlanetDelta && (
                   <div className="delta-row">
                     <span>Habitability {formatSignedPercent(stepReport.selectedPlanetDelta.habitability)}</span>
                     <span>Temp {formatSignedPercent(stepReport.selectedPlanetDelta.temperature)}</span>
@@ -482,14 +546,14 @@ function App() {
         {error && <div className="panel error-banner">{error}</div>}
 
         {simulation ? (
-          <div className="content-grid explorer-grid">
+          <div className="content-grid explorer-grid overseer-grid">
             <section className={`panel galaxy-panel focus-panel ${viewMode === 'galaxy' ? 'panel-active' : ''}`}>
               <div className="section-header">
                 <div>
-                  <p className="eyebrow">1. Survey the cosmos</p>
-                  <h3>Universe / System View</h3>
+                  <p className="eyebrow">1. Observe</p>
+                  <h3>System Watch</h3>
                 </div>
-                <span>{simulation.metrics.system_count} systems · {simulation.metrics.habitable_worlds} habitable worlds</span>
+                <span>{simulation.metrics.civilization_worlds} civilized · {simulation.metrics.settled_worlds} settled</span>
               </div>
               <div className="galaxy-map">
                 {simulation.systems.map((system) => (
@@ -508,42 +572,29 @@ function App() {
                   </button>
                 ))}
               </div>
-              {selectedSystem && (
-                <div className="focus-card inset-panel">
-                  <div>
-                    <p className="eyebrow">Selected system</p>
-                    <strong>{selectedSystem.name}</strong>
-                    <p className="muted">{selectedSystem.planets.length} planets orbit a type {selectedSystem.star_type} star.</p>
-                  </div>
-                  <button onClick={() => setViewMode('system')}>Survey planets</button>
-                </div>
-              )}
               <div className="metrics-row">
                 <div><strong>{simulation.metrics.system_count}</strong><span>systems</span></div>
-                <div><strong>{simulation.metrics.planet_count}</strong><span>planets</span></div>
-                <div><strong>{simulation.metrics.species_count}</strong><span>species</span></div>
-                <div><strong>{simulation.metrics.habitable_worlds}</strong><span>habitable worlds</span></div>
+                <div><strong>{simulation.metrics.planet_count}</strong><span>worlds</span></div>
+                <div><strong>{simulation.metrics.civilization_worlds}</strong><span>civilizations</span></div>
+                <div><strong>{simulation.metrics.settled_worlds}</strong><span>settlements</span></div>
               </div>
             </section>
 
             <section className={`panel orbit-panel focus-panel ${viewMode === 'system' ? 'panel-active' : ''}`}>
               <div className="section-header">
                 <div>
-                  <p className="eyebrow">2. Drop into orbit</p>
+                  <p className="eyebrow">2. Choose a world</p>
                   <h3>{selectedSystem?.name ?? 'Select a system'}</h3>
                 </div>
-                <div className="mini-actions">
-                  <span>Star {selectedSystem?.star_type} · luminosity {selectedSystem?.luminosity}</span>
-                  <button onClick={() => setViewMode('galaxy')} disabled={!selectedSystem}>Back to universe</button>
-                </div>
+                <button onClick={() => setViewMode('galaxy')} disabled={!selectedSystem}>Back to universe</button>
               </div>
               <div className="orbit-strip orbit-grid">
                 {selectedSystem?.planets.map((planet) => {
-                  const stage = lifeStageSummary(planet);
+                  const worldStage = lifeStageSummary(planet);
                   return (
                     <button
                       key={planet.id}
-                      className={`planet-chip ${selectedPlanet?.id === planet.id ? 'selected' : ''} tone-${stage.tone}`}
+                      className={`planet-chip ${selectedPlanet?.id === planet.id ? 'selected' : ''} tone-${worldStage.tone}`}
                       onClick={() => {
                         setSelectedPlanetId(planet.id);
                         setViewMode('planet');
@@ -551,24 +602,14 @@ function App() {
                     >
                       <div className="planet-chip-top">
                         <strong>{planet.name}</strong>
-                        <span className={`status-pill tone-${stage.tone}`}>{stage.label}</span>
+                        <span className={`status-pill tone-${worldStage.tone}`}>{worldStage.label}</span>
                       </div>
-                      <span>{metricPercent(planet.metrics.habitability)} habitable · {metricPercent(planet.metrics.water_ratio)} water</span>
-                      <span>{planet.life.present ? `${planet.life.species_count} species · ${climateLabel(planet)}` : `No life · ${climateLabel(planet)}`}</span>
+                      <span>{metricPercent(planet.metrics.habitability)} habitable · {metricPercent(planet.development.interest)} interest</span>
+                      <span>{planet.life.civilization ? `${planet.life.civilization.tier} civilization` : `${planet.life.species_count} species`}</span>
                     </button>
                   );
                 })}
               </div>
-              {selectedPlanet && (
-                <div className={`focus-card inset-panel tone-${selectedPlanetStage?.tone ?? 'sterile'}`}>
-                  <div>
-                    <p className="eyebrow">Orbital readout</p>
-                    <strong>{selectedPlanet.name}</strong>
-                    <p className="muted">{selectedPlanetStage?.label} · anomaly: {selectedPlanet.anomaly}</p>
-                  </div>
-                  <button onClick={() => setViewMode('planet')}>Enter surface</button>
-                </div>
-              )}
             </section>
 
             {selectedPlanet && (
@@ -576,12 +617,12 @@ function App() {
                 <section className={`panel detail-panel focus-panel ${viewMode === 'planet' ? 'panel-active' : ''}`}>
                   <div className="section-header detail-header">
                     <div>
-                      <p className="eyebrow">3. Surface / biome immersion</p>
+                      <p className="eyebrow">3. Inspect</p>
                       <h3>{selectedPlanet.name}</h3>
                       <p className="muted">{selectedPlanet.radius_km.toLocaleString()} km · {seasonName(selectedPlanet.season_phase)} · anomaly: {selectedPlanet.anomaly}</p>
                     </div>
                     <div className="mini-actions align-end">
-                      <span className={`status-pill tone-${selectedPlanetStage?.tone ?? 'sterile'}`}>{selectedPlanetStage?.label}</span>
+                      <span className={`status-pill tone-${stage?.tone ?? 'sterile'}`}>{stage?.label}</span>
                       <button onClick={() => setViewMode('system')}>Back to orbit</button>
                     </div>
                   </div>
@@ -589,26 +630,10 @@ function App() {
                   <div className="planet-stage-layout">
                     <PlanetGlobe planet={selectedPlanet} hoveredCell={hoverCell} />
                     <div className="planet-meters">
-                      <div className="meter-card">
-                        <span>Water coverage</span>
-                        <strong>{metricPercent(selectedPlanet.metrics.water_ratio)}</strong>
-                        <div className="meter-track"><i style={{ width: metricPercent(selectedPlanet.metrics.water_ratio) }} /></div>
-                      </div>
-                      <div className="meter-card">
-                        <span>Thermal band</span>
-                        <strong>{metricPercent(selectedPlanet.metrics.avg_temperature)}</strong>
-                        <div className="meter-track warm"><i style={{ width: metricPercent(selectedPlanet.metrics.avg_temperature) }} /></div>
-                      </div>
-                      <div className="meter-card">
-                        <span>Moisture band</span>
-                        <strong>{metricPercent(selectedPlanet.metrics.avg_moisture)}</strong>
-                        <div className="meter-track lush"><i style={{ width: metricPercent(selectedPlanet.metrics.avg_moisture) }} /></div>
-                      </div>
-                      <div className="meter-card highlight">
-                        <span>Habitability</span>
-                        <strong>{metricPercent(selectedPlanet.metrics.habitability)}</strong>
-                        <div className="meter-track bright"><i style={{ width: metricPercent(selectedPlanet.metrics.habitability) }} /></div>
-                      </div>
+                      <div className="meter-card"><span>Habitability</span><strong>{metricPercent(selectedPlanet.metrics.habitability)}</strong><div className="meter-track bright"><i style={{ width: metricPercent(selectedPlanet.metrics.habitability) }} /></div></div>
+                      <div className="meter-card"><span>Collapse risk</span><strong>{metricPercent(selectedPlanet.development.collapse_risk)}</strong><div className="meter-track danger"><i style={{ width: metricPercent(selectedPlanet.development.collapse_risk) }} /></div></div>
+                      <div className="meter-card"><span>World interest</span><strong>{metricPercent(selectedPlanet.development.interest)}</strong><div className="meter-track"><i style={{ width: metricPercent(selectedPlanet.development.interest) }} /></div></div>
+                      <div className="meter-card"><span>Next milestone</span><strong>{selectedPlanet.development.next_milestone}</strong><p className="muted">{selectedPlanet.development.expansion_ready ? 'Ready for off-world action.' : 'Still developing.'}</p></div>
                     </div>
                   </div>
 
@@ -625,7 +650,7 @@ function App() {
                         <span>Habitability {metricPercent(hoverCell.habitability)}</span>
                       </>
                     ) : (
-                      <span>Hover or focus surface cells to inspect biome boundaries, climate, and habitability. Glowing cells mark strong life-supporting zones.</span>
+                      <span>Hover or focus surface cells to inspect where climate, water, and life-supporting terrain overlap.</span>
                     )}
                   </div>
                 </section>
@@ -633,61 +658,143 @@ function App() {
                 <section className="panel inspector-panel focus-panel panel-active">
                   <div className="section-header">
                     <div>
-                      <p className="eyebrow">Living world inspector</p>
-                      <h3>Life & Species Visibility</h3>
+                      <p className="eyebrow">4. Influence & observe consequences</p>
+                      <h3>Overseer Control Layer</h3>
                     </div>
-                    <span>{selectedPlanet.life.present ? selectedPlanet.life.dominant_species : 'No biosphere detected'}</span>
+                    <span>{selectedPlanet.life.alert_level}</span>
                   </div>
 
-                  <div className={`life-banner tone-${selectedPlanetStage?.tone ?? 'sterile'}`}>
-                    <strong>{selectedPlanetStage?.label}</strong>
-                    <span>{selectedPlanet.life.present ? `${selectedPlanet.life.species_count} species · biosphere score ${selectedPlanet.life.biosphere_score}` : 'Sterile conditions still dominate this world.'}</span>
+                  <div className={`life-banner tone-${stage?.tone ?? 'sterile'}`}>
+                    <strong>{stage?.label}</strong>
+                    <span>{selectedPlanet.life.present ? `${selectedPlanet.life.species_count} species · biosphere score ${selectedPlanet.life.biosphere_score}` : 'No natural biosphere detected yet.'}</span>
                   </div>
 
                   <div className="life-summary inset-panel summary-grid">
-                    <div>
-                      <span className="summary-label">Dominant strain</span>
-                      <strong>{selectedPlanet.life.dominant_species ?? 'None'}</strong>
-                    </div>
-                    <div>
-                      <span className="summary-label">Total population</span>
-                      <strong>{populationOf(selectedPlanet).toLocaleString()}</strong>
-                    </div>
-                    <div>
-                      <span className="summary-label">Climate</span>
-                      <strong>{climateLabel(selectedPlanet)}</strong>
-                    </div>
-                    <div>
-                      <span className="summary-label">Season</span>
-                      <strong>{seasonName(selectedPlanet.season_phase)}</strong>
-                    </div>
+                    <div><span className="summary-label">Dominant strain</span><strong>{selectedPlanet.life.dominant_species ?? 'None'}</strong></div>
+                    <div><span className="summary-label">Population</span><strong>{populationOf(selectedPlanet).toLocaleString()}</strong></div>
+                    <div><span className="summary-label">Season</span><strong>{seasonName(selectedPlanet.season_phase)}</strong></div>
+                    <div><span className="summary-label">Climate</span><strong>{climateLabel(selectedPlanet)}</strong></div>
                   </div>
 
                   {selectedPlanet.life.civilization && (
                     <div className="civilization-card inset-panel">
-                      <p className="eyebrow">Civilization contact</p>
+                      <p className="eyebrow">Civilization readiness</p>
                       <strong>{selectedPlanet.life.civilization.name}</strong>
-                      <span>{selectedPlanet.life.civilization.tier} civilization · stability {metricPercent(selectedPlanet.life.civilization.stability)}</span>
+                      <span>{selectedPlanet.life.civilization.tier} civilization · orbital {selectedPlanet.life.civilization.orbital_presence ? 'online' : 'not yet'}</span>
+                      <div className="threshold-grid">
+                        {Object.entries(selectedPlanet.life.civilization.thresholds).map(([key, value]) => (
+                          <div key={key} className="threshold-card">
+                            <span>{key.replace(/_/g, ' ')}</span>
+                            <strong>{metricPercent(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
+                  {selectedPlanet.settlement && (
+                    <div className="settlement-card inset-panel">
+                      <p className="eyebrow">Off-world presence</p>
+                      <strong>{selectedPlanet.settlement.kind} from {selectedPlanet.settlement.origin_planet_name}</strong>
+                      <span>{selectedPlanet.settlement.civilization_name} · pop {selectedPlanet.settlement.population.toLocaleString()} · {selectedPlanet.settlement.status}</span>
+                    </div>
+                  )}
+
+                  <div className="action-panel">
+                    <div>
+                      <p className="eyebrow">Natural & direct world influence</p>
+                      <div className="action-grid">
+                        {WORLD_ACTIONS.map((action) => (
+                          <button key={action.id} className={`action-card ${action.mode}`} onClick={() => applyInfluence(action)} disabled={loading}>
+                            <strong>{action.label}</strong>
+                            <span>{action.effect}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="eyebrow">Culture / civilization biasing</p>
+                      <div className="action-grid">
+                        {CULTURE_ACTIONS.map((action) => (
+                          <button key={action.id} className={`action-card ${action.mode}`} onClick={() => applyInfluence(action)} disabled={loading || (!selectedPlanet.life.present && !selectedPlanet.settlement)}>
+                            <strong>{action.label}</strong>
+                            <span>{action.effect}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="influence-readout inset-panel">
+                    <p className="eyebrow">Active world pressures</p>
+                    <div className="pressure-grid">
+                      {Object.entries(selectedPlanet.influences)
+                        .filter(([, value]) => Math.abs(value) >= 0.02)
+                        .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
+                        .slice(0, 8)
+                        .map(([key, value]) => (
+                          <div key={key} className="threshold-card">
+                            <span>{key.replace(/_/g, ' ')}</span>
+                            <strong>{formatSignedPercent(value)}</strong>
+                          </div>
+                        ))}
+                      {Object.values(selectedPlanet.influences).every((value) => Math.abs(value) < 0.02) && <span className="muted">No strong overseer pressure is active on this world yet.</span>}
+                    </div>
+                  </div>
+
                   <div className="species-list">
                     {selectedPlanet.species.map((species) => (
-                      <article key={species.id} className={`species-card tone-${species.stage === 'civilization' ? 'civilized' : species.stage === 'toolmakers' ? 'developing' : 'primitive'}`}>
+                      <article key={species.id} className={`species-card tone-${species.stage === 'spacefaring' || species.stage === 'civilization' ? 'civilized' : species.stage === 'toolmakers' ? 'developing' : 'primitive'}`}>
                         <div className="planet-chip-top">
                           <strong>{species.name}</strong>
-                          <span className={`status-pill tone-${species.stage === 'civilization' ? 'civilized' : species.stage === 'toolmakers' ? 'developing' : 'primitive'}`}>
-                            {species.stage}
-                          </span>
+                          <span className={`status-pill tone-${species.stage === 'spacefaring' || species.stage === 'civilization' ? 'civilized' : species.stage === 'toolmakers' ? 'developing' : 'primitive'}`}>{species.stage}</span>
                         </div>
                         <span>{species.adaptation}</span>
                         <span>Population: {species.population.toLocaleString()}</span>
-                        <span>Resilience: {metricPercent(species.resilience)}</span>
+                        <span>Tech {metricPercent(species.tech_tier)} · coordination {metricPercent(species.coordination)}</span>
+                        <span>Collapse pressure {metricPercent(species.collapse_pressure)}</span>
                       </article>
                     ))}
-                    {selectedPlanet.species.length === 0 && (
-                      <p className="muted">This world currently has no active biosphere.</p>
-                    )}
+                    {selectedPlanet.species.length === 0 && <p className="muted">This world currently has no active native biosphere.</p>}
+                  </div>
+                </section>
+
+                <section className="panel alerts-panel focus-panel panel-active">
+                  <div className="section-header">
+                    <div>
+                      <p className="eyebrow">Feedback</p>
+                      <h3>Alerts & Recent Developments</h3>
+                    </div>
+                    {actionFeedback && <span>{actionFeedback.category}</span>}
+                  </div>
+                  {actionFeedback && (
+                    <div className="focus-card inset-panel feedback-card">
+                      <div>
+                        <strong>{actionFeedback.title}</strong>
+                        <p className="muted">{actionFeedback.detail}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="alerts-list">
+                    {simulation.alerts.slice().reverse().map((alert, index) => (
+                      <article key={`${alert.step}-${alert.title}-${index}`} className={`alert-card ${alert.severity}`}>
+                        <div className="planet-chip-top">
+                          <strong>{alert.title}</strong>
+                          <span>Epoch {alert.step}</span>
+                        </div>
+                        <span>{alert.detail}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="recent-events inset-panel">
+                    <p className="eyebrow">Selected world log</p>
+                    <div className="event-list">
+                      {selectedPlanet.recent_events.slice().reverse().map((event) => (
+                        <span key={event}>{event}</span>
+                      ))}
+                      {selectedPlanet.recent_events.length === 0 && <span className="muted">No major events on this world yet.</span>}
+                    </div>
                   </div>
                 </section>
               </>
@@ -696,7 +803,7 @@ function App() {
         ) : (
           <section className="panel empty-state">
             <h3>Create or open a simulation</h3>
-            <p>Generate a seeded universe from the left panel or load an existing save to begin exploring.</p>
+            <p>Generate a seeded universe from the left panel or load an existing save to begin acting as the overseer.</p>
           </section>
         )}
       </main>

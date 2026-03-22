@@ -5,9 +5,7 @@
   line-height: 1.5;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -18,10 +16,7 @@ body {
     linear-gradient(180deg, #040613 0%, #08101f 100%);
 }
 
-button,
-input {
-  font: inherit;
-}
+button, input { font: inherit; }
 
 button {
   cursor: pointer;
@@ -59,9 +54,7 @@ input {
   color: #eff4ff;
 }
 
-#root {
-  min-height: 100vh;
-}
+#root { min-height: 100vh; }
 
 .app-shell {
   display: grid;
@@ -94,10 +87,7 @@ input {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
 }
 
-.focus-panel {
-  transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
-}
-
+.focus-panel { transition: border-color 140ms ease, box-shadow 140ms ease; }
 .panel-active {
   border-color: rgba(89, 208, 255, 0.6);
   box-shadow: 0 18px 50px rgba(23, 92, 178, 0.16);
@@ -105,6 +95,9 @@ input {
 
 .inset-panel {
   background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  padding: 0.85rem;
 }
 
 .eyebrow {
@@ -115,54 +108,29 @@ input {
   margin-bottom: 0.25rem;
 }
 
-.muted {
-  color: #93a1c5;
-}
-
-.stack-gap {
+.muted { color: #93a1c5; }
+.stack-gap, .save-list, .watch-list, .species-list, .planet-meters, .alerts-list, .event-list {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.75rem;
 }
 
-.section-header,
-.topbar,
-.focus-card,
-.planet-stage-layout,
-.summary-grid,
-.compact-header {
+.section-header, .topbar, .focus-card, .planet-stage-layout, .compact-header, .planet-chip-top, .hover-readout, .life-summary, .planet-globe-caption {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
 }
 
-.compact-header {
-  align-items: flex-start;
-}
-
+.compact-header { align-items: flex-start; }
 .topbar-grid {
   display: grid;
-  grid-template-columns: 1.1fr minmax(320px, 0.9fr);
+  grid-template-columns: 1.1fr minmax(360px, 0.9fr);
   gap: 1rem;
   align-items: start;
 }
 
-.epoch-engine,
-.step-report,
-.life-banner,
-.civilization-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.breadcrumb-row,
-.delta-row,
-.legend-row,
-.mini-actions,
-.planet-chip-top,
-.planet-badges {
+.breadcrumb-row, .delta-row, .legend-row, .mini-actions, .time-controls, .pressure-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
@@ -180,30 +148,12 @@ input {
   border: 1px solid rgba(89, 208, 255, 0.6);
 }
 
-.time-controls {
-  display: flex;
-  gap: 0.75rem;
-}
-
 .pulse-controls button {
   background: linear-gradient(135deg, rgba(53, 120, 255, 0.3), rgba(89, 208, 255, 0.18));
   border: 1px solid rgba(89, 208, 255, 0.28);
 }
 
-.save-list,
-.orbit-strip,
-.species-list,
-.planet-meters {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.save-card,
-.planet-chip,
-.species-card,
-.focus-card,
-.meter-card {
+.save-card, .watch-card, .planet-chip, .species-card, .focus-card, .meter-card, .threshold-card, .alert-card, .action-card {
   text-align: left;
   display: flex;
   flex-direction: column;
@@ -213,11 +163,7 @@ input {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.focus-card {
-  margin-top: 1rem;
-  flex-direction: row;
-}
-
+.focus-card.feedback-card { align-items: flex-start; }
 .status-pill {
   border-radius: 999px;
   padding: 0.2rem 0.6rem;
@@ -226,69 +172,26 @@ input {
   letter-spacing: 0.08em;
 }
 
-.tone-sterile {
-  border-color: rgba(111, 123, 145, 0.38);
-}
+.tone-sterile { border-color: rgba(111, 123, 145, 0.38); }
+.tone-primitive { border-color: rgba(107, 213, 159, 0.42); }
+.tone-developing { border-color: rgba(144, 242, 207, 0.42); }
+.tone-civilized { border-color: rgba(255, 212, 127, 0.46); }
 
-.status-pill.tone-sterile,
-.life-banner.tone-sterile,
-.planet-globe-card.tone-sterile {
-  background: rgba(111, 123, 145, 0.15);
-}
+.status-pill.tone-sterile, .life-banner.tone-sterile, .planet-globe-card.tone-sterile { background: rgba(111, 123, 145, 0.15); }
+.status-pill.tone-primitive, .life-banner.tone-primitive, .planet-globe-card.tone-primitive { background: rgba(107, 213, 159, 0.16); }
+.status-pill.tone-developing, .life-banner.tone-developing, .planet-globe-card.tone-developing { background: rgba(144, 242, 207, 0.18); }
+.status-pill.tone-civilized, .life-banner.tone-civilized, .planet-globe-card.tone-civilized, .civilization-card, .settlement-card { background: rgba(255, 212, 127, 0.16); }
 
-.tone-primitive {
-  border-color: rgba(107, 213, 159, 0.42);
-}
+.planet-chip.selected, .system-node.selected, .save-card:hover, .watch-card:hover, .surface-cell.hovered { outline: 2px solid #59d0ff; }
 
-.status-pill.tone-primitive,
-.life-banner.tone-primitive,
-.planet-globe-card.tone-primitive {
-  background: rgba(107, 213, 159, 0.16);
-}
-
-.tone-developing {
-  border-color: rgba(144, 242, 207, 0.42);
-}
-
-.status-pill.tone-developing,
-.life-banner.tone-developing,
-.planet-globe-card.tone-developing {
-  background: rgba(144, 242, 207, 0.18);
-}
-
-.tone-civilized {
-  border-color: rgba(255, 212, 127, 0.46);
-}
-
-.status-pill.tone-civilized,
-.life-banner.tone-civilized,
-.planet-globe-card.tone-civilized,
-.civilization-card {
-  background: rgba(255, 212, 127, 0.16);
-}
-
-.planet-chip.selected,
-.system-node.selected,
-.save-card:hover,
-.surface-cell.hovered {
-  outline: 2px solid #59d0ff;
-}
-
-.explorer-grid {
+.content-grid.overseer-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1.15fr) minmax(290px, 0.85fr);
+  grid-template-columns: minmax(320px, 1.15fr) minmax(320px, 0.85fr);
   gap: 1rem;
 }
 
-.galaxy-panel,
-.detail-panel {
-  grid-column: 1;
-}
-
-.orbit-panel,
-.inspector-panel {
-  grid-column: 2;
-}
+.galaxy-panel, .detail-panel, .alerts-panel { grid-column: 1; }
+.orbit-panel, .inspector-panel { grid-column: 2; }
 
 .galaxy-map {
   position: relative;
@@ -315,50 +218,18 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.system-node span {
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: #ffd27a;
-}
-
-.metrics-row,
-.summary-grid {
+.system-node span { font-size: 1.2rem; font-weight: 800; color: #ffd27a; }
+.metrics-row, .summary-grid, .threshold-grid, .pressure-grid {
   margin-top: 1rem;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0.75rem;
 }
 
-.metrics-row > div,
-.summary-grid > div,
-.meter-card {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.orbit-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.75rem;
-}
-
-.detail-header {
-  align-items: flex-start;
-}
-
-.align-end {
-  align-items: flex-end;
-}
-
-.planet-stage-layout {
-  align-items: stretch;
-  margin-block: 1rem;
-}
-
+.threshold-grid { grid-template-columns: repeat(3, 1fr); }
+.pressure-grid { grid-template-columns: repeat(2, 1fr); }
+.orbit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+.planet-stage-layout { align-items: stretch; margin-block: 1rem; }
 .planet-globe-card {
   flex: 1.15;
   border-radius: 18px;
@@ -366,61 +237,15 @@ input {
   padding: 1rem;
 }
 
-.planet-globe {
-  width: 100%;
-  max-width: 320px;
-  display: block;
-  margin: 0 auto;
-}
+.planet-globe { width: 100%; max-width: 320px; display: block; margin: 0 auto; }
+.planet-meters { flex: 1; }
+.meter-card strong, .threshold-card strong { font-size: 1.15rem; }
+.meter-track { width: 100%; height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.meter-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(135deg, #4a82ff, #59d0ff); }
+.meter-track.bright i { background: linear-gradient(135deg, #f3ff8e, #7ee7ff); }
+.meter-track.danger i { background: linear-gradient(135deg, #ff8f71, #ff4e66); }
 
-.planet-globe-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-}
-
-.planet-meters {
-  flex: 1;
-}
-
-.meter-card strong {
-  font-size: 1.25rem;
-}
-
-.meter-track {
-  width: 100%;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.meter-track i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(135deg, #4a82ff, #59d0ff);
-}
-
-.meter-track.warm i {
-  background: linear-gradient(135deg, #ffb258, #ff6a4f);
-}
-
-.meter-track.lush i {
-  background: linear-gradient(135deg, #5fe0af, #a3ffcf);
-}
-
-.meter-track.bright i {
-  background: linear-gradient(135deg, #f3ff8e, #7ee7ff);
-}
-
-.surface-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
+.surface-wrap { display: flex; flex-direction: column; gap: 0.75rem; }
 .surface-map {
   display: grid;
   grid-template-columns: repeat(24, minmax(10px, 1fr));
@@ -438,97 +263,35 @@ input {
   position: relative;
 }
 
-.surface-cell.hotspot {
-  box-shadow: 0 0 0 1px rgba(204, 255, 228, 0.45), 0 0 12px rgba(96, 255, 183, 0.24);
-}
+.surface-cell.hotspot { box-shadow: 0 0 0 1px rgba(204, 255, 228, 0.45), 0 0 12px rgba(96, 255, 183, 0.24); }
+.life-dot { position: absolute; inset: 22%; border-radius: 999px; background: rgba(223, 255, 235, 0.92); }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; color: #aab8da; font-size: 0.82rem; text-transform: capitalize; }
+.legend-item i { width: 0.8rem; height: 0.8rem; border-radius: 4px; display: inline-block; }
+.summary-label { color: #94a6ce; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; }
 
-.life-dot {
-  position: absolute;
-  inset: 22%;
-  border-radius: 999px;
-  background: rgba(223, 255, 235, 0.92);
-}
+.life-banner, .civilization-card, .settlement-card, .action-panel, .epoch-engine, .step-report, .recent-events { display: flex; flex-direction: column; gap: 0.5rem; }
+.action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+.action-card.subtle { border-color: rgba(89, 208, 255, 0.25); }
+.action-card.direct { border-color: rgba(255, 180, 127, 0.3); background: rgba(255, 166, 102, 0.08); }
+.alert-card.watch { border-color: rgba(89, 208, 255, 0.3); }
+.alert-card.opportunity { border-color: rgba(120, 255, 176, 0.3); }
+.alert-card.critical { border-color: rgba(255, 105, 132, 0.38); }
+.event-list span { padding: 0.6rem 0.8rem; border-radius: 10px; background: rgba(255,255,255,0.03); }
 
-.legend-row {
-  row-gap: 0.35rem;
-}
+.error-banner { border-color: rgba(255, 104, 122, 0.4); color: #ffbac3; }
+.empty-state { display: grid; place-items: center; min-height: 300px; text-align: center; }
 
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: #aab8da;
-  font-size: 0.82rem;
-  text-transform: capitalize;
-}
-
-.legend-item i {
-  width: 0.8rem;
-  height: 0.8rem;
-  border-radius: 4px;
-  display: inline-block;
-}
-
-.hover-readout,
-.life-summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.summary-label {
-  color: #94a6ce;
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.error-banner {
-  border-color: rgba(255, 104, 122, 0.4);
-  color: #ffbac3;
-}
-
-.empty-state {
-  display: grid;
-  place-items: center;
-  min-height: 300px;
-  text-align: center;
-}
-
-@media (max-width: 1240px) {
-  .topbar-grid,
-  .app-shell,
-  .explorer-grid,
-  .planet-stage-layout {
+@media (max-width: 1320px) {
+  .app-shell, .topbar-grid, .content-grid.overseer-grid, .planet-stage-layout {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
 
-  .galaxy-panel,
-  .detail-panel,
-  .orbit-panel,
-  .inspector-panel {
-    grid-column: auto;
-  }
-
-  .summary-grid,
-  .metrics-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .galaxy-panel, .detail-panel, .orbit-panel, .inspector-panel, .alerts-panel { grid-column: auto; }
+  .metrics-row, .summary-grid, .threshold-grid, .pressure-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 760px) {
-  .summary-grid,
-  .metrics-row,
-  .orbit-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hover-readout,
-  .life-summary,
-  .focus-card,
-  .planet-globe-caption {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  .metrics-row, .summary-grid, .threshold-grid, .pressure-grid, .action-grid, .orbit-grid { grid-template-columns: 1fr; }
+  .section-header, .planet-stage-layout, .hover-readout, .life-summary, .planet-globe-caption, .focus-card { flex-direction: column; align-items: flex-start; }
 }

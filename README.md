@@ -1,12 +1,13 @@
 # Grand Simulations
 
-Grand Simulations is a playable baseline cosmic god-simulation sandbox with a FastAPI backend and React + TypeScript frontend.
+Grand Simulations is a playable baseline cosmic overseer sandbox with a FastAPI backend and React + TypeScript frontend.
 
 ## Features
 - Deterministic seeded universe generation with multiple systems and planets.
 - Planet surface maps showing land/water distribution, biome bands, and habitability cues.
-- Life/species simulation with population progression and emergent civilization markers.
-- Time stepping that mutates real simulation state and persists it in SQLite.
+- Life/species simulation with culture, civilization, and off-world expansion thresholds.
+- Overseer interventions that bias real climate, biosphere, culture, and civilization variables.
+- Time stepping that mutates real simulation state, emits alerts, and persists everything in SQLite.
 - Save/load support through stored simulations.
 
 ## Backend setup

@@ -28,6 +28,66 @@ export type Species = {
   population: number;
   growth_bias: number;
   resilience: number;
+  culture: Record<string, number>;
+  tech_tier: number;
+  coordination: number;
+  resourcefulness: number;
+  collapse_pressure: number;
+};
+
+export type Civilization = {
+  name: string;
+  tier: string;
+  population: number;
+  tech: number;
+  coordination: number;
+  resources: number;
+  exploration: number;
+  survival: number;
+  collapse_risk: number;
+  expansion_ready: boolean;
+  orbital_presence: boolean;
+  settlements: number;
+  outposts: number;
+  thresholds: Record<string, number>;
+  known_targets: Array<{
+    planet_id: string;
+    planet_name: string;
+    habitability: number;
+    supports_colony: boolean;
+    supports_outpost: boolean;
+    occupied: boolean;
+  }>;
+};
+
+export type LifeOverview = {
+  present: boolean;
+  species_count: number;
+  dominant_species: string | null;
+  civilization: Civilization | null;
+  biosphere_score: number;
+  alert_level: string;
+  development_index: number;
+  expansion_targets: Civilization['known_targets'];
+  offworld_presence: Array<{
+    target_planet_id: string;
+    target_planet_name: string;
+    kind: string;
+    population: number;
+    status: string;
+  }>;
+};
+
+export type Settlement = {
+  kind: string;
+  origin_planet_id: string;
+  origin_planet_name: string;
+  civilization_name: string;
+  population: number;
+  established_step: number;
+  status: string;
+  support: number;
+  viability: number;
 };
 
 export type Planet = {
@@ -38,15 +98,18 @@ export type Planet = {
   surface: SurfaceCell[][];
   metrics: Record<string, number>;
   species: Species[];
-  life: {
-    present: boolean;
-    species_count: number;
-    dominant_species: string | null;
-    civilization: { name: string; tier: string; stability: number } | null;
-    biosphere_score: number;
-  };
+  life: LifeOverview;
   season_phase: number;
   anomaly: string;
+  influences: Record<string, number>;
+  development: {
+    interest: number;
+    collapse_risk: number;
+    expansion_ready: boolean;
+    next_milestone: string;
+  };
+  settlement: Settlement | null;
+  recent_events: string[];
 };
 
 export type StarSystem = {
@@ -59,6 +122,16 @@ export type StarSystem = {
   planets: Planet[];
 };
 
+export type Alert = {
+  step: number;
+  system_id: string;
+  planet_id: string | null;
+  category: string;
+  title: string;
+  detail: string;
+  severity: string;
+};
+
 export type SimulationState = {
   id: string;
   name: string;
@@ -66,4 +139,17 @@ export type SimulationState = {
   current_step: number;
   systems: StarSystem[];
   metrics: Record<string, number>;
+  alerts: Alert[];
+  overseer: {
+    presence_mode: string;
+    watch_worlds: Array<{
+      system_id: string;
+      system_name: string;
+      planet_id: string;
+      planet_name: string;
+      interest: number;
+      alert_level: string;
+      expansion_ready: boolean;
+    }>;
+  };
 };

@@ -31,4 +31,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ steps }),
     }),
+  influencePlanet: (simulationId: string, planetId: string, action: string): Promise<SimulationState> =>
+    request(`/simulations/${simulationId}/planets/${planetId}/influence`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
 };
