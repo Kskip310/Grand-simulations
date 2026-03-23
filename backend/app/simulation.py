@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -113,6 +114,16 @@ def _choose_biome(elevation: float, moisture: float, temperature: float, volcani
     return "grassland"
 
 
+def _has_water(elevation: float, moisture: float, temperature: float) -> bool:
+    sea_bias = 0.28 + moisture * 0.05 - temperature * 0.02
+    return elevation < _clamp(sea_bias, 0.18, 0.42)
+
+
+def _cell_habitability(elevation: float, moisture: float, temperature: float, has_water: bool) -> float:
+    water_bonus = 0.06 if has_water else 0.0
+    return round(_clamp((moisture * 0.42 + temperature * 0.3 + elevation * 0.12 + water_bonus), 0.0, 1.0), 3)
+
+
 def _event(step: int, system_id: str, planet_id: str | None, category: str, title: str, detail: str, severity: str = "info") -> dict[str, Any]:
     return {
         "step": step,
@@ -180,6 +191,7 @@ def _surface_grid(seed: int, system_index: int, planet_index: int) -> list[list[
             temperature = 0.9 - latitude * 0.72 + _noise(planet_seed + 202, x, y, 1.5) * 0.18
             temperature = _clamp(temperature, 0.0, 1.0)
             volcanic = _clamp(0.5 + _noise(planet_seed + 303, x, y, 2.7) * 0.45, 0.0, 1.0)
+            has_water = _has_water(elevation, moisture, temperature)
             biome = _choose_biome(elevation, moisture, temperature, volcanic)
             row.append(
                 {
@@ -190,8 +202,9 @@ def _surface_grid(seed: int, system_index: int, planet_index: int) -> list[list[
                     "temperature": round(temperature, 3),
                     "biome": biome,
                     "label": BIOME_PALETTE[biome],
-                    "has_water": elevation < 0.28,
-                    "habitability": round(_clamp((moisture * 0.5 + temperature * 0.35 + elevation * 0.15), 0.0, 1.0), 3),
+                    "volcanic": round(volcanic, 3),
+                    "has_water": has_water,
+                    "habitability": _cell_habitability(elevation, moisture, temperature, has_water),
                 }
             )
         grid.append(row)
@@ -489,6 +502,20 @@ def _append_alert(state: dict[str, Any], alert: dict[str, Any]) -> None:
 
 
 def _refresh_simulation_metrics(state: dict[str, Any]) -> None:
+    watch_targets = [
+        {
+            "system_id": system["id"],
+            "system_name": system["name"],
+            "planet_id": planet["id"],
+            "planet_name": planet["name"],
+            "interest": planet["development"]["interest"],
+            "alert_level": planet["life"]["alert_level"],
+            "expansion_ready": planet["development"]["expansion_ready"],
+        }
+        for system in state["systems"]
+        for planet in system["planets"]
+        if _is_watch_target(planet)
+    ]
     state["metrics"] = {
         "system_count": len(state["systems"]),
         "planet_count": sum(len(system["planets"]) for system in state["systems"]),
@@ -506,44 +533,31 @@ def _refresh_simulation_metrics(state: dict[str, Any]) -> None:
             if planet["life"].get("civilization")
         ),
         "settled_worlds": sum(1 for system in state["systems"] for planet in system["planets"] if planet.get("settlement")),
-        "watch_worlds": sum(1 for system in state["systems"] for planet in system["planets"] if planet["development"]["interest"] > 0.55),
+        "watch_worlds": len(watch_targets),
     }
     state["overseer"] = {
         "presence_mode": "steward",
-        "watch_worlds": sorted(
-            [
-                {
-                    "system_id": system["id"],
-                    "system_name": system["name"],
-                    "planet_id": planet["id"],
-                    "planet_name": planet["name"],
-                    "interest": planet["development"]["interest"],
-                    "alert_level": planet["life"]["alert_level"],
-                    "expansion_ready": planet["development"]["expansion_ready"],
-                }
-                for system in state["systems"]
-                for planet in system["planets"]
-            ],
-            key=lambda item: item["interest"],
-            reverse=True,
-        )[:8],
+        "watch_worlds": sorted(watch_targets, key=lambda item: item["interest"], reverse=True)[:8],
     }
 
 
-def _apply_surface_feedback(planet: dict[str, Any]) -> None:
+def _is_watch_target(planet: dict[str, Any]) -> bool:
+    return planet["development"]["interest"] > 0.55 or planet["life"]["alert_level"] in {"watch", "opportunity", "critical"}
+
+
+def _apply_surface_feedback(planet: dict[str, Any], temperature_delta: float, moisture_delta: float) -> None:
     fertility = planet["influences"]["fertility"]
-    temp_shift = planet["influences"]["temperature_drift"]
-    moisture_shift = planet["influences"]["moisture_drift"]
     protection = planet["influences"]["protection"]
     disaster = planet["influences"]["disaster_pressure"]
     for row in planet["surface"]:
         for cell in row:
-            cell["temperature"] = round(_clamp(cell["temperature"] + temp_shift * 0.08 - disaster * 0.01, 0.0, 1.0), 3)
-            cell["moisture"] = round(_clamp(cell["moisture"] + moisture_shift * 0.08 + fertility * 0.03, 0.0, 1.0), 3)
-            cell["habitability"] = round(
-                _clamp(cell["habitability"] + fertility * 0.04 + protection * 0.02 - disaster * 0.03, 0.0, 1.0),
-                3,
-            )
+            volcanic = cell.get("volcanic", 0.0)
+            cell["temperature"] = round(_clamp(cell["temperature"] + temperature_delta - disaster * 0.01, 0.0, 1.0), 3)
+            cell["moisture"] = round(_clamp(cell["moisture"] + moisture_delta + fertility * 0.02 - disaster * 0.004, 0.0, 1.0), 3)
+            cell["has_water"] = _has_water(cell["elevation"], cell["moisture"], cell["temperature"])
+            cell["habitability"] = _cell_habitability(cell["elevation"], cell["moisture"], cell["temperature"], cell["has_water"])
+            cell["biome"] = _choose_biome(cell["elevation"], cell["moisture"], cell["temperature"], volcanic)
+            cell["label"] = BIOME_PALETTE[cell["biome"]]
 
 
 def _update_species(seed: int, state: dict[str, Any], system: dict[str, Any], planet: dict[str, Any], species: dict[str, Any]) -> None:
@@ -718,25 +732,10 @@ def _step_planet(seed: int, state: dict[str, Any], system: dict[str, Any], plane
 
     climate_delta += influences["temperature_drift"] * 0.045 - influences["disaster_pressure"] * 0.01 + influences["environmental_stability"] * 0.004
     moisture_delta += influences["moisture_drift"] * 0.045 + influences["fertility"] * 0.01 - influences["disaster_pressure"] * 0.008
-
-    metrics["avg_temperature"] = round(_clamp(metrics["avg_temperature"] + climate_delta, 0.0, 1.0), 3)
-    metrics["avg_moisture"] = round(_clamp(metrics["avg_moisture"] + moisture_delta, 0.0, 1.0), 3)
-    metrics["water_ratio"] = round(_clamp(metrics["water_ratio"] + moisture_delta * 0.18, 0.0, 1.0), 3)
-    metrics["habitability"] = round(
-        _clamp(
-            metrics["habitability"]
-            + climate_delta * 0.34
-            + moisture_delta * 0.45
-            + influences["fertility"] * 0.018
-            + influences["protection"] * 0.008
-            - influences["disaster_pressure"] * 0.025,
-            0.0,
-            1.0,
-        ),
-        3,
-    )
     planet["season_phase"] = round(phase, 3)
-    _apply_surface_feedback(planet)
+    _apply_surface_feedback(planet, climate_delta, moisture_delta)
+    planet["metrics"] = _aggregate_metrics(planet["surface"])
+    metrics = planet["metrics"]
 
     for species in planet["species"]:
         _update_species(seed, state, system, planet, species)
@@ -791,8 +790,9 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
 def generate_simulation(seed: int, name: str | None = None) -> dict[str, Any]:
     universe_rng = _rng(seed, "universe")
     systems = [_system_summary(seed, index) for index in range(universe_rng.randint(3, 5))]
+    simulation_id = f"sim-{seed}-{uuid.uuid4().hex[:10]}"
     state = {
-        "id": f"sim-{seed}",
+        "id": simulation_id,
         "name": name or f"Grand Simulation {seed}",
         "seed": seed,
         "current_step": 0,
@@ -830,6 +830,8 @@ def apply_influence(state: dict[str, Any], planet_id: str, action: str) -> dict[
         for planet in system["planets"]:
             if planet["id"] != planet_id:
                 continue
+            if action in CULTURE_INFLUENCE_EFFECTS and not planet["species"]:
+                raise ValueError("Culture influences require native species or civilization context on the selected world")
             for key, delta in effect.items():
                 planet["influences"][key] = round(_clamp(planet["influences"][key] + delta, -0.5, 1.0), 3)
             if action == "biosphere_seeding" and not planet["species"] and planet["metrics"]["habitability"] >= 0.42:

@@ -339,6 +339,7 @@ function App() {
 
   const stage = selectedPlanet ? lifeStageSummary(selectedPlanet) : null;
   const primarySpecies = selectedPlanet ? dominantSpecies(selectedPlanet) : null;
+  const hasCultureContext = Boolean(selectedPlanet && selectedPlanet.species.length > 0);
 
   useEffect(() => {
     if (simulation?.systems[0] && !selectedSystemId) {
@@ -715,9 +716,12 @@ function App() {
 
                     <div>
                       <p className="eyebrow">Culture / civilization biasing</p>
+                      {!hasCultureContext && selectedPlanet.settlement && (
+                        <p className="muted">Culture actions are disabled here because this world only hosts an off-world settlement and has no native species context.</p>
+                      )}
                       <div className="action-grid">
                         {CULTURE_ACTIONS.map((action) => (
-                          <button key={action.id} className={`action-card ${action.mode}`} onClick={() => applyInfluence(action)} disabled={loading || (!selectedPlanet.life.present && !selectedPlanet.settlement)}>
+                          <button key={action.id} className={`action-card ${action.mode}`} onClick={() => applyInfluence(action)} disabled={loading || !hasCultureContext}>
                             <strong>{action.label}</strong>
                             <span>{action.effect}</span>
                           </button>
